@@ -132,6 +132,13 @@ const App: React.FC = () => {
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'purchase_transactions' },
+        (payload) => {
+          setTransactions(prev => prev.map(tx => tx.id === payload.new.id ? payload.new as Transaction : tx));
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'user_accounts' },
         (payload) => {
           setUsers(prev => [payload.new as UserAccount, ...prev].slice(0, 50));

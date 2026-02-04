@@ -30,6 +30,7 @@ interface Transaction {
 interface UserAccount {
   id: string;
   google_uid: string;
+  email?: string;
   tier: string;
   created_at: string;
   last_login?: string;
@@ -364,7 +365,7 @@ const App: React.FC = () => {
                       <div className="w-6 h-6 rounded-full bg-[#00ffcc]/10 flex items-center justify-center">
                         <Mail size={12} className="text-[#00ffcc]" />
                       </div>
-                      <span className="text-[10px] font-black text-white">{user.google_uid.substring(0, 15)}...</span>
+                      <span className="text-[10px] font-black text-white">{user.email || user.google_uid.substring(0, 15) + '...'}</span>
                     </div>
                     <span className="text-[8px] font-black bg-[#00ffcc]/20 text-[#00ffcc] px-2 py-0.5 rounded-full uppercase">
                       {user.tier}

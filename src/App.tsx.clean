@@ -11,6 +11,8 @@ import {
   Users,
   Clock,
   TrendingUp,
+  AlertTriangle,
+  DollarSign
 } from 'lucide-react';
 import { format, isAfter, subHours, subMinutes } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';

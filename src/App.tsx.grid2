@@ -9,10 +9,9 @@ import {
   Mail,
   Cpu,
   Users,
-  Clock,
-  TrendingUp,
+  Clock
 } from 'lucide-react';
-import { format, isAfter, subHours, subMinutes } from 'date-fns';
+import { format, isAfter, subHours } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ADMIN_EMAIL = 'antigravitybybulla@gmail.com';
@@ -43,7 +42,6 @@ interface UserSession {
   session_token: string;
   user_uid: string;
   created_at: string;
-  last_activity?: string;
 }
 
 const App: React.FC = () => {
@@ -91,7 +89,7 @@ const App: React.FC = () => {
       .from('purchase_transactions')
       .select('*')
       .order('verified_at', { ascending: false })
-      .limit(100);
+      .limit(50);
 
     if (error) console.error('Fetch transactions error:', error);
     else setTransactions(data || []);
@@ -102,7 +100,7 @@ const App: React.FC = () => {
       .from('user_accounts')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(50);
 
     if (error) console.error('Fetch users error:', error);
     else setUsers(data || []);
@@ -113,7 +111,7 @@ const App: React.FC = () => {
       .from('sessions')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(50);
 
     if (error) console.error('Fetch sessions error:', error);
     else setSessions(data || []);
@@ -126,19 +124,11 @@ const App: React.FC = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'purchase_transactions' },
         (payload) => {
-          const tx = payload.new as Transaction;
-          setTransactions(prev => [tx, ...prev].slice(0, 100));
-
+          setTransactions(prev => [payload.new as Transaction, ...prev].slice(0, 50));
           if (Notification.permission === 'granted') {
-            const emoji = tx.status === 'success' ? '💰✅' : '❌💸';
-            const title = tx.status === 'success'
-              ? `Payment Success: ${tx.product_id}`
-              : `Payment Failed: ${tx.product_id}`;
-            const body = tx.amount
-              ? `Amount: $${tx.amount} | TX: ${tx.transaction_id.slice(0, 20)}...`
-              : `TX: ${tx.transaction_id}`;
-
-            new Notification(`${emoji} ${title}`, { body });
+            new Notification(`💰 New Payment: ${payload.new.status.toUpperCase()}`, {
+              body: `TX: ${payload.new.transaction_id}`
+            });
           }
         }
       )
@@ -153,19 +143,14 @@ const App: React.FC = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'user_accounts' },
         (payload) => {
-          setUsers(prev => [payload.new as UserAccount, ...prev].slice(0, 100));
-          if (Notification.permission === 'granted') {
-            new Notification('👤 New User Joined', {
-              body: `Email: ${payload.new.email || 'Unknown'}`
-            });
-          }
+          setUsers(prev => [payload.new as UserAccount, ...prev].slice(0, 50));
         }
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'sessions' },
         (payload) => {
-          setSessions(prev => [payload.new as UserSession, ...prev].slice(0, 100));
+          setSessions(prev => [payload.new as UserSession, ...prev].slice(0, 50));
         }
       )
       .subscribe();
@@ -231,15 +216,18 @@ const App: React.FC = () => {
   const twentyFourHoursAgo = subHours(new Date(), 24);
   const newUsersToday = users.filter(u => isAfter(new Date(u.created_at), twentyFourHoursAgo)).length;
 
+
+
   // Payment Analytics
   const successful = transactions.filter(tx => tx.status === 'success').length;
   const failedToday = transactions.filter(tx => tx.status === 'failed' && isAfter(new Date(tx.verified_at), twentyFourHoursAgo)).length;
   const successRate = transactions.length > 0 ? ((successful / transactions.length) * 100).toFixed(1) : '100.0';
 
-  // Enhanced User Engagement with last_activity tracking
+  // Enhanced User Engagement
   const activeNow = sessions.filter(s => s.last_activity && isAfter(new Date(s.last_activity), subMinutes(new Date(), 5))).length;
   const activeHour = sessions.filter(s => s.last_activity && isAfter(new Date(s.last_activity), subHours(new Date(), 1))).length;
   const active24h = sessions.filter(s => isAfter(new Date(s.created_at), twentyFourHoursAgo)).length;
+
 
   const filteredTransactions = transactions.filter(tx =>
     tx.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -259,7 +247,7 @@ const App: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
-              NEXUS COMMAND <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono mt-1">LIVE_V1.6</span>
+              NEXUS COMMAND <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono mt-1">LIVE_V1.5</span>
             </h1>
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em]">Authorized: {ADMIN_EMAIL}</p>
           </div>
@@ -285,16 +273,13 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Mini Grid - Now with 7 metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mb-10">
+      {/* Stats Mini Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-10">
         {[
           { label: 'Total Users', value: users.length, icon: Users },
-          { label: 'New Today', value: newUsersToday, icon: TrendingUp },
-          { label: 'Active Now', value: activeNow, icon: Activity },
-          { label: 'Active (1h)', value: activeHour, icon: Clock },
-          { label: 'Active (24h)', value: active24h, icon: Users },
-          { label: 'Success Rate', value: `${successRate}%`, icon: Shield },
-          { label: 'Failed Today', value: failedToday, icon: XCircle }
+          { label: 'New Today', value: newUsersToday, icon: Clock },
+          { label: 'Active Now', value: activeNow, icon: Activity }, { label: 'Active (1h)', value: activeHour, icon: Clock }, { label: 'Active (24h)', value: active24h, icon: TrendingUp,
+          { label: 'Success Rate', value: `${successRate}%`, icon: Shield }, { label: 'Failed Today', value: failedToday, icon: XCircle }
         ].map((stat, i) => (
           <div key={i} className="p-6 rounded-3xl nexus-glass space-y-3">
             <div className="flex justify-between items-center">

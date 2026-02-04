@@ -21,6 +21,35 @@ CREATE INDEX IF NOT EXISTS idx_sessions_created
 CREATE INDEX IF NOT EXISTS idx_users_created 
   ON user_accounts(created_at DESC);
 
+-- Add session activity tracking for real engagement metrics
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS expired_at TIMESTAMP WITH TIME ZONE;
+
+-- Index for activity-based queries
+CREATE INDEX IF NOT EXISTS idx_sessions_last_activity 
+  ON sessions(last_activity DESC) WHERE is_active = true;
+
+-- Function to auto-expire inactive sessions (optional - can be called by n8n or pg_cron)
+CREATE OR REPLACE FUNCTION expire_inactive_sessions()
+RETURNS INTEGER AS $$
+DECLARE
+  expired_count INTEGER;
+BEGIN
+  UPDATE sessions
+  SET 
+    is_active = false,
+    expired_at = NOW()
+  WHERE 
+    last_activity < NOW() - INTERVAL '5 minutes'
+    AND is_active = true;
+  
+  GET DIAGNOSTICS expired_count = ROW_COUNT;
+  RETURN expired_count;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Optional: Create a view for daily metrics aggregation
 CREATE OR REPLACE VIEW daily_metrics AS
 SELECT 

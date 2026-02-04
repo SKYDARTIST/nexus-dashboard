@@ -6,7 +6,6 @@ import {
   CreditCard,
   Search,
   LogOut,
-  CheckCircle2,
   XCircle,
   Mail,
   Cpu,

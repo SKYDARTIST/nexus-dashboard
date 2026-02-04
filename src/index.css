@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --nexus-bg: #0a0a0a;
   --nexus-accent: #00ffcc;

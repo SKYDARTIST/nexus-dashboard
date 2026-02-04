@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import {
   Activity,
@@ -216,13 +216,10 @@ const App: React.FC = () => {
   const twentyFourHoursAgo = subHours(new Date(), 24);
   const newUsersToday = users.filter(u => isAfter(new Date(u.created_at), twentyFourHoursAgo)).length;
 
-  const oneHourAgo = subHours(new Date(), 1);
-  const activeUsers = sessions.filter(s => isAfter(new Date(s.created_at), oneHourAgo)).length;
 
 
   // Payment Analytics
   const successful = transactions.filter(tx => tx.status === 'success').length;
-  const failed = transactions.filter(tx => tx.status === 'failed').length;
   const failedToday = transactions.filter(tx => tx.status === 'failed' && isAfter(new Date(tx.verified_at), twentyFourHoursAgo)).length;
   const successRate = transactions.length > 0 ? ((successful / transactions.length) * 100).toFixed(1) : '100.0';
 

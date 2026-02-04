@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import {
   Activity,
@@ -25,6 +25,8 @@ interface Transaction {
   status: 'success' | 'failed' | 'pending';
   verified_at: string;
   error_message?: string;
+  amount?: number;
+  currency?: string;
 }
 
 interface UserAccount {
@@ -217,6 +219,17 @@ const App: React.FC = () => {
   const oneHourAgo = subHours(new Date(), 1);
   const activeUsers = sessions.filter(s => isAfter(new Date(s.created_at), oneHourAgo)).length;
 
+
+  // Payment Analytics
+  const successful = transactions.filter(tx => tx.status === 'success').length;
+  const failed = transactions.filter(tx => tx.status === 'failed').length;
+  const failedToday = transactions.filter(tx => tx.status === 'failed' && isAfter(new Date(tx.verified_at), twentyFourHoursAgo)).length;
+  const successRate = transactions.length > 0 ? ((successful / transactions.length) * 100).toFixed(1) : '100.0';
+
+  // Enhanced User Engagement
+  const active24h = sessions.filter(s => isAfter(new Date(s.created_at), twentyFourHoursAgo)).length;
+
+
   const filteredTransactions = transactions.filter(tx =>
     tx.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     tx.device_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -235,7 +248,7 @@ const App: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
-              NEXUS COMMAND <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono mt-1">LIVE_V1.1</span>
+              NEXUS COMMAND <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono mt-1">LIVE_V1.5</span>
             </h1>
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em]">Authorized: {ADMIN_EMAIL}</p>
           </div>
@@ -262,12 +275,12 @@ const App: React.FC = () => {
       </div>
 
       {/* Stats Mini Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-10">
         {[
           { label: 'Total Users', value: users.length, icon: Users },
           { label: 'New Today', value: newUsersToday, icon: Clock },
-          { label: 'Active Now', value: activeUsers, icon: Activity },
-          { label: 'System Health', value: '100%', icon: Shield }
+          { label: 'Active (24h)', value: active24h, icon: Activity },
+          { label: 'Success Rate', value: `${successRate}%`, icon: Shield }, { label: 'Failed Today', value: failedToday, icon: XCircle }
         ].map((stat, i) => (
           <div key={i} className="p-6 rounded-3xl nexus-glass space-y-3">
             <div className="flex justify-between items-center">

@@ -24,6 +24,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const ADMIN_EMAIL = 'antigravitybybulla@gmail.com';
 
+// Fallback prices (USD) for transactions where amount was not recorded.
+// Update these to match your Google Play Console prices.
+const PRODUCT_PRICES: Record<string, number> = {
+  lifetime_pro_access: 4.99,
+  pro_access_lifetime: 4.99,
+  monthly_pro_pass: 1.99,
+};
+
+const getTxnAmount = (tx: Transaction): number => {
+  if (tx.amount && tx.amount > 0) return tx.amount;
+  return PRODUCT_PRICES[tx.product_id?.toLowerCase()] ?? 0;
+};
+
 interface Transaction {
   id: string;
   transaction_id: string;
@@ -247,10 +260,10 @@ const App: React.FC = () => {
 
   // Revenue metrics
   const successfulTxns = transactions.filter(tx => tx.status === 'success');
-  const totalRevenue = successfulTxns.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const totalRevenue = successfulTxns.reduce((sum, tx) => sum + getTxnAmount(tx), 0);
   const revenueToday = successfulTxns
     .filter(tx => isAfter(new Date(tx.verified_at), twentyFourHoursAgo))
-    .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    .reduce((sum, tx) => sum + getTxnAmount(tx), 0);
   const avgTxnValue = successfulTxns.length > 0 ? totalRevenue / successfulTxns.length : 0;
   const failedToday = transactions.filter(tx => tx.status === 'failed' && isAfter(new Date(tx.verified_at), twentyFourHoursAgo)).length;
   const successRate = transactions.length > 0 ? ((successfulTxns.length / transactions.length) * 100).toFixed(1) : '100.0';
@@ -440,8 +453,8 @@ const App: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-[11px] font-black ${tx.amount ? 'text-[#ffd700]' : 'text-gray-600'}`}>
-                          {tx.amount ? `$${tx.amount.toFixed(2)}` : '—'}
+                        <span className="text-[11px] font-black text-[#ffd700]">
+                          ${getTxnAmount(tx).toFixed(2)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -651,7 +664,7 @@ const App: React.FC = () => {
                     {[
                       { label: 'Total Sessions', value: selectedUserDetail.sessions.length },
                       { label: 'Purchases', value: selectedUserDetail.transactions.filter(t => t.status === 'success').length },
-                      { label: 'Total Spent', value: `$${selectedUserDetail.transactions.filter(t => t.status === 'success').reduce((s, t) => s + (t.amount || 0), 0).toFixed(2)}` },
+                      { label: 'Total Spent', value: `$${selectedUserDetail.transactions.filter(t => t.status === 'success').reduce((s, t) => s + getTxnAmount(t), 0).toFixed(2)}` },
                     ].map((s, i) => (
                       <div key={i} className="p-4 rounded-2xl bg-white/5 text-center">
                         <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">{s.label}</p>
@@ -697,7 +710,7 @@ const App: React.FC = () => {
                               </div>
                             </div>
                             <span className={`text-[11px] font-black flex-shrink-0 ${tx.status === 'success' ? 'text-[#ffd700]' : 'text-red-400'}`}>
-                              {tx.amount ? `$${tx.amount.toFixed(2)}` : tx.status.toUpperCase()}
+                              {tx.status === 'success' ? `$${getTxnAmount(tx).toFixed(2)}` : tx.status.toUpperCase()}
                             </span>
                           </div>
                         ))}

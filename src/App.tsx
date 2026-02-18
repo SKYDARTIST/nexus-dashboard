@@ -18,6 +18,7 @@ import {
   ChevronRight,
   RefreshCw,
   BarChart2,
+  Zap,
 } from 'lucide-react';
 import { format, isAfter, subHours, subMinutes, subDays, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -82,6 +83,13 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUserDetail, setSelectedUserDetail] = useState<UserDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [grantingId, setGrantingId] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -158,6 +166,27 @@ const App: React.FC = () => {
 
     setSelectedUserDetail({ user, sessions: userSessions || [], transactions: userTxns || [] });
     setLoadingDetail(false);
+  };
+
+  const handleGrant = async (tx: Transaction) => {
+    if (!tx.google_uid && !tx.device_id) return;
+    if (!window.confirm(`Grant Lifetime to ${tx.google_uid || tx.device_id}?`)) return;
+    setGrantingId(tx.id);
+    try {
+      const { error } = await supabase
+        .from('user_accounts')
+        .update({ tier: 'lifetime' })
+        .eq('google_uid', tx.google_uid);
+      if (!error) {
+        setTransactions(prev => prev.map(t => t.id === tx.id ? { ...t, status: 'success' as const } : t));
+      } else {
+        alert('Grant failed: ' + error.message);
+      }
+    } catch (err: any) {
+      alert('Grant error: ' + err.message);
+    } finally {
+      setGrantingId(null);
+    }
   };
 
   const subscribeToAllChanges = () => {
@@ -324,8 +353,13 @@ const App: React.FC = () => {
             <Cpu size={24} className="text-[#00ffcc]" />
           </div>
           <div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
-              NEXUS COMMAND <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono mt-1">LIVE_V2.0</span>
+            <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3 flex-wrap">
+              NEXUS COMMAND
+              <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-mono">LIVE_V2.0</span>
+              <div className="flex items-center gap-1.5 bg-[#00ffcc]/10 border border-[#00ffcc]/20 px-2 py-0.5 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#00ffcc] animate-pulse" />
+                <span className="text-[9px] font-mono font-black text-[#00ffcc] tabular-nums">{format(currentTime, 'HH:mm:ss')}</span>
+              </div>
             </h1>
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em]">Authorized: {ADMIN_EMAIL}</p>
           </div>
@@ -357,17 +391,38 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      {/* Failed Transaction Alert Banner */}
+      {failedToday > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-between gap-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+            <span className="text-[11px] font-black uppercase tracking-widest text-red-400">
+              {failedToday} failed payment{failedToday > 1 ? 's' : ''} today — check transaction feed
+            </span>
+          </div>
+          <span className="text-[9px] font-bold text-red-500/60 uppercase tracking-widest">action required</span>
+        </motion.div>
+      )}
+
       {/* Stats Row 1: User Engagement */}
       <div className="mb-4">
-        <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase mb-3">USER ENGAGEMENT</p>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-0.5 h-3 bg-[#00ffcc] rounded-full" />
+          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">USER ENGAGEMENT</p>
+          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">signed-in only</span>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[
-            { label: 'Total Users', value: users.length, icon: Users, color: 'white' },
-            { label: 'New Today', value: newUsersToday, icon: TrendingUp, color: newUsersToday > 0 ? '#00ffcc' : 'white' },
-            { label: 'Returning Today', value: returningToday, icon: RefreshCw, color: returningToday > 0 ? '#00ffcc' : 'white' },
-            { label: 'Active Now', value: activeNow, icon: Activity, color: activeNow > 0 ? '#00ff88' : 'white' },
-            { label: 'Active (1h)', value: activeHour, icon: Clock, color: activeHour > 0 ? '#00ffcc' : 'white' },
-            { label: 'Active (24h)', value: active24h, icon: Users, color: active24h > 0 ? '#00ffcc' : 'white' },
+            { label: 'Total Users', value: users.length, icon: Users, color: 'white', note: 'logged in ever' },
+            { label: 'New Today', value: newUsersToday, icon: TrendingUp, color: newUsersToday > 0 ? '#00ffcc' : 'white', note: null },
+            { label: 'Returning Today', value: returningToday, icon: RefreshCw, color: returningToday > 0 ? '#00ffcc' : 'white', note: null },
+            { label: 'Active Now', value: activeNow, icon: Activity, color: activeNow > 0 ? '#00ff88' : 'white', note: null },
+            { label: 'Active (1h)', value: activeHour, icon: Clock, color: activeHour > 0 ? '#00ffcc' : 'white', note: null },
+            { label: 'Active (24h)', value: active24h, icon: Users, color: active24h > 0 ? '#00ffcc' : 'white', note: null },
           ].map((stat, i) => (
             <div key={i} className="p-5 rounded-3xl nexus-glass space-y-3">
               <div className="flex justify-between items-center">
@@ -375,6 +430,7 @@ const App: React.FC = () => {
                 <stat.icon size={13} className="text-[#00ffcc]/40" />
               </div>
               <div className="text-2xl font-black tracking-tighter" style={{ color: stat.color }}>{stat.value}</div>
+              {stat.note && <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">{stat.note}</p>}
             </div>
           ))}
         </div>
@@ -382,7 +438,10 @@ const App: React.FC = () => {
 
       {/* Stats Row 2: Revenue + Retention */}
       <div className="mb-10">
-        <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase mb-3">REVENUE & RETENTION</p>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-0.5 h-3 bg-[#ffd700] rounded-full" />
+          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">REVENUE & RETENTION</p>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
           {[
             { label: 'Total Revenue', value: `$${totalRevenue.toFixed(2)}`, icon: DollarSign, color: '#ffd700' },
@@ -393,12 +452,24 @@ const App: React.FC = () => {
             { label: 'D1 Retention', value: d1Retention, icon: RefreshCw, color: '#a78bfa' },
             { label: 'D7 Retention', value: d7Retention, icon: BarChart2, color: '#a78bfa' },
           ].map((stat, i) => (
-            <div key={i} className="p-5 rounded-3xl nexus-glass space-y-3">
+            <div
+              key={i}
+              className={`p-5 rounded-3xl nexus-glass space-y-3 ${
+                i === 0
+                  ? 'border border-[#ffd700]/25 shadow-[0_0_24px_rgba(255,215,0,0.07)]'
+                  : ''
+              }`}
+            >
               <div className="flex justify-between items-center">
                 <span className="text-[9px] font-black tracking-widest text-gray-500 uppercase">{stat.label}</span>
-                <stat.icon size={13} className="text-white/20" />
+                <stat.icon size={13} className={i === 0 ? 'text-[#ffd700]/40' : 'text-white/20'} />
               </div>
-              <div className="text-xl font-black tracking-tighter" style={{ color: stat.color }}>{stat.value}</div>
+              <div
+                className={`font-black tracking-tighter ${i === 0 ? 'text-2xl' : 'text-xl'}`}
+                style={{ color: stat.color }}
+              >
+                {stat.value}
+              </div>
             </div>
           ))}
         </div>
@@ -431,7 +502,9 @@ const App: React.FC = () => {
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0 }}
-                      className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group"
+                      className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors group border-l-2 ${
+                        tx.status === 'success' ? 'border-l-[#00ffcc]/40' : 'border-l-red-500/50'
+                      }`}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -458,9 +531,23 @@ const App: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className="text-[9px] font-bold text-gray-500">
-                          {format(new Date(tx.verified_at), 'MMM d, HH:mm')}
-                        </span>
+                        <div className="flex items-center justify-end gap-3">
+                          <span className="text-[9px] font-bold text-gray-500">
+                            {format(new Date(tx.verified_at), 'MMM d, HH:mm')}
+                          </span>
+                          {tx.status === 'failed' && tx.google_uid && (
+                            <button
+                              disabled={grantingId === tx.id}
+                              onClick={() => handleGrant(tx)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20 rounded-full text-[8px] font-black uppercase tracking-widest hover:bg-[#00ffcc]/20 transition-all disabled:opacity-40"
+                            >
+                              {grantingId === tx.id
+                                ? <RefreshCw size={9} className="animate-spin" />
+                                : <Zap size={9} fill="currentColor" />}
+                              GRANT
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </motion.tr>
                   ))}
@@ -529,6 +616,7 @@ const App: React.FC = () => {
         {/* Power Users Leaderboard */}
         <div className="rounded-[2.5rem] nexus-glass overflow-hidden">
           <div className="p-6 border-b border-white/5 flex items-center gap-3">
+            <div className="w-0.5 h-3 bg-[#ffd700] rounded-full" />
             <Trophy size={14} className="text-[#ffd700]" />
             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-400">POWER USERS</span>
             <span className="text-[9px] text-gray-600 font-bold ml-auto uppercase tracking-widest">by sessions</span>
@@ -570,6 +658,7 @@ const App: React.FC = () => {
         {/* Churn Risk */}
         <div className="rounded-[2.5rem] nexus-glass overflow-hidden">
           <div className="p-6 border-b border-white/5 flex items-center gap-3">
+            <div className="w-0.5 h-3 bg-[#ff6b6b] rounded-full" />
             <AlertTriangle size={14} className="text-[#ff6b6b]" />
             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-400">CHURN RISK</span>
             <span className="text-[9px] text-gray-600 font-bold ml-auto uppercase tracking-widest">7+ days silent</span>

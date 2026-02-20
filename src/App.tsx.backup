@@ -18,7 +18,6 @@ import {
   ChevronRight,
   RefreshCw,
   BarChart2,
-  BarChart3,
   Zap,
 } from 'lucide-react';
 import { format, isAfter, subHours, subMinutes, subDays, differenceInDays } from 'date-fns';
@@ -64,7 +63,6 @@ interface UserAccount {
 interface UserSession {
   session_token: string;
   user_uid: string;
-  device_id?: string;
   created_at: string;
   last_activity?: string;
   is_active?: boolean;
@@ -74,25 +72,6 @@ interface UserDetail {
   user: UserAccount;
   sessions: UserSession[];
   transactions: Transaction[];
-}
-
-interface AnalyticsEvent {
-  event: string;
-  device_id: string;
-  data: Record<string, any>;
-  created_at: string;
-}
-
-interface ToolUsageStats {
-  tool_name: string;
-  opens: number;
-  unique_users: number;
-}
-
-interface DailyDevices {
-  date: string;
-  unique_devices: number;
-  total_events: number;
 }
 
 const App: React.FC = () => {
@@ -106,9 +85,6 @@ const App: React.FC = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [grantingId, setGrantingId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [analytics, setAnalytics] = useState<AnalyticsEvent[]>([]);
-  const [toolUsage, setToolUsage] = useState<ToolUsageStats[]>([]);
-  const [dailyDevices, setDailyDevices] = useState<DailyDevices[]>([]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -135,7 +111,7 @@ const App: React.FC = () => {
 
   const fetchAllData = async () => {
     setLoading(true);
-    await Promise.all([fetchTransactions(), fetchUsers(), fetchSessions(), fetchAnalytics()]);
+    await Promise.all([fetchTransactions(), fetchUsers(), fetchSessions()]);
     setLoading(false);
   };
 
@@ -167,75 +143,6 @@ const App: React.FC = () => {
       .limit(500);
     if (error) console.error('Fetch sessions error:', error);
     else setSessions(data || []);
-  };
-
-  const fetchAnalytics = async () => {
-    // Fetch last 7 days of analytics events
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const { data, error } = await supabase
-      .from('ag_analytics')
-      .select('*')
-      .gte('created_at', sevenDaysAgo.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1000);
-
-    if (error) {
-      console.error('Fetch analytics error:', error);
-    } else {
-      setAnalytics(data || []);
-      processAnalyticsData(data || []);
-    }
-  };
-
-  const processAnalyticsData = (events: AnalyticsEvent[]) => {
-    // Process Tool Usage
-    const toolEvents = events.filter(e => e.event === 'tool_open');
-    const toolMap: Record<string, { opens: number; users: Set<string> }> = {};
-
-    toolEvents.forEach(e => {
-      const toolName = e.data?.tool || 'Unknown';
-      if (!toolMap[toolName]) {
-        toolMap[toolName] = { opens: 0, users: new Set() };
-      }
-      toolMap[toolName].opens++;
-      toolMap[toolName].users.add(e.device_id);
-    });
-
-    const toolStats: ToolUsageStats[] = Object.entries(toolMap)
-      .map(([tool_name, stats]) => ({
-        tool_name,
-        opens: stats.opens,
-        unique_users: stats.users.size,
-      }))
-      .sort((a, b) => b.opens - a.opens);
-
-    setToolUsage(toolStats);
-
-    // Process Daily Device Activity
-    const dailyMap: Record<string, Set<string>> = {};
-    const dailyEventCount: Record<string, number> = {};
-
-    events.forEach(e => {
-      const date = e.created_at.split('T')[0]; // YYYY-MM-DD
-      if (!dailyMap[date]) {
-        dailyMap[date] = new Set();
-        dailyEventCount[date] = 0;
-      }
-      dailyMap[date].add(e.device_id);
-      dailyEventCount[date]++;
-    });
-
-    const daily: DailyDevices[] = Object.entries(dailyMap)
-      .map(([date, deviceSet]) => ({
-        date,
-        unique_devices: deviceSet.size,
-        total_events: dailyEventCount[date],
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-
-    setDailyDevices(daily);
   };
 
   const openUserDetail = async (user: UserAccount) => {
@@ -375,44 +282,10 @@ const App: React.FC = () => {
     !isAfter(new Date(u.created_at), twentyFourHoursAgo)
   ).length;
 
-  // Session metrics - count unique users, not sessions
-  const uniqueActiveUsers = (timeThreshold: Date) => {
-    const uniqueUids = new Set<string>();
-    sessions.forEach(s => {
-      if (s.last_activity && isAfter(new Date(s.last_activity), timeThreshold)) {
-        uniqueUids.add(s.user_uid);
-      }
-    });
-    return uniqueUids.size;
-  };
-
-  const activeNow = uniqueActiveUsers(subMinutes(now, 5));
-  const activeHour = uniqueActiveUsers(subHours(now, 1));
-
-  // 24H active includes anonymous users from analytics
-  // Get device_ids that have signed in (from sessions table)
-  const signedInDeviceIds = new Set(
-    sessions
-      .filter(s => s.device_id) // sessions with device_id
-      .map(s => s.device_id)
-  );
-
-  // Signed-in users (24H) - count unique devices from sessions
-  const signed24h = new Set(
-    sessions
-      .filter(s => s.device_id && s.last_activity && isAfter(new Date(s.last_activity), twentyFourHoursAgo))
-      .map(s => s.device_id)
-  ).size;
-
-  // Anonymous users (24H) - devices in analytics but NOT in sessions
-  const anonymous24h = new Set(
-    analytics
-      .filter(e => isAfter(new Date(e.created_at), twentyFourHoursAgo))
-      .filter(e => !signedInDeviceIds.has(e.device_id)) // NOT signed in
-      .map(e => e.device_id)
-  ).size;
-
-  const active24h = signed24h + anonymous24h;
+  // Session metrics
+  const activeNow = sessions.filter(s => s.last_activity && isAfter(new Date(s.last_activity), subMinutes(now, 5))).length;
+  const activeHour = sessions.filter(s => s.last_activity && isAfter(new Date(s.last_activity), subHours(now, 1))).length;
+  const active24h = sessions.filter(s => isAfter(new Date(s.created_at), twentyFourHoursAgo)).length;
 
   // Revenue metrics
   const successfulTxns = transactions.filter(tx => tx.status === 'success');
@@ -443,19 +316,6 @@ const App: React.FC = () => {
     u.last_login && new Date(u.last_login).getTime() > new Date(u.created_at).getTime() + 120000
   );
   const d7Retention = d7Cohort.length > 0 ? `${((d7Retained.length / d7Cohort.length) * 100).toFixed(0)}%` : 'N/A';
-
-  // Pricing Funnel Metrics
-  const pricingViews = analytics.filter(e =>
-    e.event === 'pricing_banner_tap' || e.event === 'pricing_tile_tap'
-  ).length;
-  const pricingClicks = new Set(
-    analytics
-      .filter(e => e.event === 'pricing_banner_tap' || e.event === 'pricing_tile_tap')
-      .map(e => e.device_id)
-  ).size;
-  const pricingConversionRate = pricingClicks > 0
-    ? ((successfulTxns.length / pricingClicks) * 100).toFixed(1)
-    : '0.0';
 
   // Power Users: top 10 by session count
   const sessionCountMap: Record<string, number> = {};
@@ -612,187 +472,6 @@ const App: React.FC = () => {
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Analytics Dashboard: Tool Usage, Daily Devices, Pricing Funnel, User Breakdown */}
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-[#00ffcc] rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">ANALYTICS INSIGHTS</p>
-          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Last 7 Days</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Tool Usage Panel */}
-          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#00ffcc]/10 flex items-center justify-center">
-                  <BarChart3 className="text-[#00ffcc]" size={20} />
-                </div>
-                <div>
-                  <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Tool Usage</h3>
-                  <p className="text-[8px] text-gray-600 uppercase tracking-wider">Most Popular</p>
-                </div>
-              </div>
-              <RefreshCw
-                className="text-gray-600 cursor-pointer hover:text-[#00ffcc] transition-colors"
-                size={14}
-                onClick={() => fetchAnalytics()}
-              />
-            </div>
-
-            <div className="space-y-3">
-              {toolUsage.length === 0 ? (
-                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
-              ) : (
-                toolUsage.slice(0, 5).map((tool, idx) => {
-                  const maxOpens = toolUsage[0]?.opens || 1;
-                  const percentage = (tool.opens / maxOpens) * 100;
-                  return (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between text-[10px]">
-                        <span className="font-bold text-white truncate max-w-[120px]">{tool.tool_name}</span>
-                        <span className="text-gray-500 flex-shrink-0">{tool.opens}</span>
-                      </div>
-                      <div className="h-1.5 bg-black/30 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${percentage}%` }}
-                          transition={{ duration: 0.5, delay: idx * 0.1 }}
-                          className="h-full bg-gradient-to-r from-[#00ffcc] to-[#00ff88]"
-                        />
-                      </div>
-                      <p className="text-[8px] text-gray-600">
-                        {tool.unique_users} user{tool.unique_users !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Daily Devices Panel */}
-          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[#ff6b9d]/10 flex items-center justify-center">
-                <TrendingUp className="text-[#ff6b9d]" size={20} />
-              </div>
-              <div>
-                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Daily Devices</h3>
-                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Active by Date</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {dailyDevices.slice(0, 7).map((day, idx) => {
-                const maxDevices = Math.max(...dailyDevices.map(d => d.unique_devices));
-                const percentage = (day.unique_devices / maxDevices) * 100;
-                const date = new Date(day.date);
-                const dateStr = format(date, 'MMM dd');
-
-                return (
-                  <div key={idx} className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold text-gray-500 w-12 flex-shrink-0">{dateStr}</span>
-                    <div className="flex-1 h-6 bg-black/30 rounded-xl overflow-hidden relative">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${percentage}%` }}
-                        transition={{ duration: 0.5, delay: idx * 0.05 }}
-                        className="h-full bg-gradient-to-r from-[#ff6b9d] to-[#ff8fab] flex items-center justify-end pr-2"
-                      >
-                        <span className="text-[9px] font-black text-white">
-                          {day.unique_devices}
-                        </span>
-                      </motion.div>
-                    </div>
-                    <span className="text-[8px] text-gray-600 w-10 text-right flex-shrink-0">
-                      {day.total_events}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Pricing Funnel Panel */}
-          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-yellow-500/10 flex items-center justify-center">
-                <Zap className="text-yellow-500" size={20} />
-              </div>
-              <div>
-                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Pricing Funnel</h3>
-                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Conversion</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-500">Saw Pricing</span>
-                <span className="text-lg font-black text-white">{pricingViews}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-500">Unique Clicks</span>
-                <span className="text-lg font-black text-[#00ffcc]">{pricingClicks}</span>
-              </div>
-              <div className="flex justify-between items-center pt-3 border-t border-white/5">
-                <span className="text-[10px] text-gray-500">Purchased</span>
-                <span className="text-lg font-black text-yellow-500">{successfulTxns.length}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold text-white">Conv. Rate</span>
-                <span className="text-2xl font-black text-[#00ff88]">{pricingConversionRate}%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* User Type Breakdown Panel */}
-          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center">
-                <Users className="text-blue-500" size={20} />
-              </div>
-              <div>
-                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">User Breakdown</h3>
-                <p className="text-[8px] text-gray-600 uppercase tracking-wider">24H Split</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-gray-500">Signed In</span>
-                  <span className="text-lg font-black text-[#00ffcc]">{signed24h}</span>
-                </div>
-                <div className="h-2 bg-black/30 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#00ffcc]"
-                    style={{ width: `${active24h > 0 ? (signed24h / active24h) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-gray-500">Anonymous</span>
-                  <span className="text-lg font-black text-[#ff6b9d]">{anonymous24h}</span>
-                </div>
-                <div className="h-2 bg-black/30 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#ff6b9d]"
-                    style={{ width: `${active24h > 0 ? (anonymous24h / active24h) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-3 border-t border-white/5">
-                <span className="text-[10px] font-bold text-white">Total Active</span>
-                <span className="text-2xl font-black text-white">{active24h}</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 

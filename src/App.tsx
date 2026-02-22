@@ -1017,6 +1017,89 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      {/* Live Events Feed */}
+      <div className="mb-10">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-0.5 h-3 bg-[#00ffcc] rounded-full" />
+          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">LIVE ACTIVITY FEED</p>
+          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Real-time</span>
+        </div>
+        <div className="nexus-glass rounded-[2rem] p-6">
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {recentEvents.length === 0 ? (
+              <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No events yet</p>
+            ) : (
+              recentEvents.map((event, idx) => {
+                const eventColor =
+                  event.event === 'tool_success' ? 'text-[#00ff88]' :
+                  event.event === 'tool_error' ? 'text-red-400' :
+                  event.event === 'ai_tool_success' ? 'text-[#ff6b9d]' :
+                  event.event === 'screen_view' ? 'text-[#a78bfa]' :
+                  event.event === 'tool_open' ? 'text-[#00ffcc]' :
+                  'text-gray-400';
+
+                const eventIcon =
+                  event.event === 'tool_success' ? '✓' :
+                  event.event === 'tool_error' ? '✗' :
+                  event.event === 'ai_tool_success' ? '🤖' :
+                  event.event === 'screen_view' ? '👁' :
+                  event.event === 'tool_open' ? '🔧' :
+                  event.event === 'user_action' ? '👆' :
+                  '•';
+
+                const eventDescription = () => {
+                  if (event.event === 'screen_view') {
+                    return `Viewed ${event.data?.screen || 'unknown'} screen`;
+                  } else if (event.event === 'tool_open') {
+                    return `Opened ${event.data?.tool || 'unknown'} tool`;
+                  } else if (event.event === 'tool_success') {
+                    return `Completed ${event.data?.tool || 'unknown'} (${event.data?.file_count || ''} files)`;
+                  } else if (event.event === 'tool_error') {
+                    return `Failed ${event.data?.tool || 'unknown'}: ${event.data?.error || 'Unknown error'}`;
+                  } else if (event.event === 'ai_tool_success') {
+                    return `Used AI: ${event.data?.tool || 'unknown'} - ${event.data?.feature || 'general'}`;
+                  } else if (event.event === 'user_action') {
+                    return `${event.data?.action || 'action'} in ${event.data?.screen || 'unknown'}`;
+                  } else {
+                    return event.event;
+                  }
+                };
+
+                const timeAgo = () => {
+                  const now = new Date();
+                  const eventTime = new Date(event.created_at);
+                  const diffMs = now.getTime() - eventTime.getTime();
+                  const diffMins = Math.floor(diffMs / 60000);
+                  const diffHours = Math.floor(diffMs / 3600000);
+
+                  if (diffMins < 1) return 'Just now';
+                  if (diffMins < 60) return `${diffMins}m ago`;
+                  if (diffHours < 24) return `${diffHours}h ago`;
+                  return format(eventTime, 'MMM dd');
+                };
+
+                return (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.02 }}
+                    className="flex items-start gap-3 py-2 px-3 hover:bg-white/5 rounded-xl transition-colors"
+                  >
+                    <span className={`text-sm ${eventColor} flex-shrink-0 mt-0.5`}>{eventIcon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-white font-medium truncate">{eventDescription()}</p>
+                      <p className="text-[8px] text-gray-600 font-mono">{event.device_id.slice(0, 8)}...</p>
+                    </div>
+                    <span className="text-[8px] text-gray-500 flex-shrink-0">{timeAgo()}</span>
+                  </motion.div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Main 3-col grid: Transaction Feed + User Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
         {/* Transaction Feed */}

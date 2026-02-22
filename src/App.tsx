@@ -95,6 +95,27 @@ interface DailyDevices {
   total_events: number;
 }
 
+interface ToolConversionStats {
+  tool_name: string;
+  opens: number;
+  successes: number;
+  errors: number;
+  conversion_rate: number;
+}
+
+interface AIFeatureStats {
+  feature_name: string;
+  tool: string;
+  usage_count: number;
+  unique_users: number;
+}
+
+interface ScreenNavigationStats {
+  screen: string;
+  views: number;
+  unique_users: number;
+}
+
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -109,6 +130,10 @@ const App: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsEvent[]>([]);
   const [toolUsage, setToolUsage] = useState<ToolUsageStats[]>([]);
   const [dailyDevices, setDailyDevices] = useState<DailyDevices[]>([]);
+  const [toolConversion, setToolConversion] = useState<ToolConversionStats[]>([]);
+  const [aiFeatures, setAIFeatures] = useState<AIFeatureStats[]>([]);
+  const [screenNavigation, setScreenNavigation] = useState<ScreenNavigationStats[]>([]);
+  const [recentEvents, setRecentEvents] = useState<AnalyticsEvent[]>([]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -236,6 +261,88 @@ const App: React.FC = () => {
       .sort((a, b) => b.date.localeCompare(a.date));
 
     setDailyDevices(daily);
+
+    // Process Tool Conversion Rates (opens → successes)
+    const conversionMap: Record<string, { opens: number; successes: number; errors: number }> = {};
+
+    events.filter(e => e.event === 'tool_open').forEach(e => {
+      const tool = e.data?.tool || 'Unknown';
+      if (!conversionMap[tool]) conversionMap[tool] = { opens: 0, successes: 0, errors: 0 };
+      conversionMap[tool].opens++;
+    });
+
+    events.filter(e => e.event === 'tool_success').forEach(e => {
+      const tool = e.data?.tool || 'Unknown';
+      if (!conversionMap[tool]) conversionMap[tool] = { opens: 0, successes: 0, errors: 0 };
+      conversionMap[tool].successes++;
+    });
+
+    events.filter(e => e.event === 'tool_error').forEach(e => {
+      const tool = e.data?.tool || 'Unknown';
+      if (!conversionMap[tool]) conversionMap[tool] = { opens: 0, successes: 0, errors: 0 };
+      conversionMap[tool].errors++;
+    });
+
+    const conversion: ToolConversionStats[] = Object.entries(conversionMap)
+      .map(([tool_name, stats]) => ({
+        tool_name,
+        opens: stats.opens,
+        successes: stats.successes,
+        errors: stats.errors,
+        conversion_rate: stats.opens > 0 ? (stats.successes / stats.opens) * 100 : 0
+      }))
+      .sort((a, b) => b.successes - a.successes);
+
+    setToolConversion(conversion);
+
+    // Process AI Feature Adoption
+    const aiMap: Record<string, { count: number; users: Set<string> }> = {};
+
+    events.filter(e => e.event === 'ai_tool_success').forEach(e => {
+      const tool = e.data?.tool || 'unknown';
+      const feature = e.data?.feature || 'general';
+      const key = `${tool}:${feature}`;
+      if (!aiMap[key]) aiMap[key] = { count: 0, users: new Set() };
+      aiMap[key].count++;
+      aiMap[key].users.add(e.device_id);
+    });
+
+    const aiStats: AIFeatureStats[] = Object.entries(aiMap)
+      .map(([key, stats]) => {
+        const [tool, feature] = key.split(':');
+        return {
+          tool,
+          feature_name: feature,
+          usage_count: stats.count,
+          unique_users: stats.users.size
+        };
+      })
+      .sort((a, b) => b.usage_count - a.usage_count);
+
+    setAIFeatures(aiStats);
+
+    // Process Screen Navigation
+    const screenMap: Record<string, { views: number; users: Set<string> }> = {};
+
+    events.filter(e => e.event === 'screen_view').forEach(e => {
+      const screen = e.data?.screen || 'Unknown';
+      if (!screenMap[screen]) screenMap[screen] = { views: 0, users: new Set() };
+      screenMap[screen].views++;
+      screenMap[screen].users.add(e.device_id);
+    });
+
+    const screens: ScreenNavigationStats[] = Object.entries(screenMap)
+      .map(([screen, stats]) => ({
+        screen,
+        views: stats.views,
+        unique_users: stats.users.size
+      }))
+      .sort((a, b) => b.views - a.views);
+
+    setScreenNavigation(screens);
+
+    // Set recent events for live feed
+    setRecentEvents(events.slice(0, 50));
   };
 
   const openUserDetail = async (user: UserAccount) => {
@@ -793,6 +900,120 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* NEW ANALYTICS: Screen Navigation, Tool Conversion, AI Features */}
+      <div className="mb-10">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-0.5 h-3 bg-[#a78bfa] rounded-full" />
+          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">USER JOURNEY & CONVERSIONS</p>
+          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Last 7 Days</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* Screen Navigation Panel */}
+          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#a78bfa]/10 flex items-center justify-center">
+                  <Activity className="text-[#a78bfa]" size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Screen Views</h3>
+                  <p className="text-[8px] text-gray-600 uppercase tracking-wider">Navigation</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {screenNavigation.length === 0 ? (
+                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
+              ) : (
+                screenNavigation.slice(0, 8).map((screen, idx) => (
+                  <div key={idx} className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-white capitalize truncate max-w-[100px]">{screen.screen}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-gray-500">{screen.views} views</span>
+                      <span className="text-[8px] text-[#a78bfa] font-bold">{screen.unique_users}u</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Tool Conversion Funnel */}
+          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#00ff88]/10 flex items-center justify-center">
+                <TrendingUp className="text-[#00ff88]" size={20} />
+              </div>
+              <div>
+                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Conversion Rate</h3>
+                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Opens → Success</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {toolConversion.length === 0 ? (
+                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
+              ) : (
+                toolConversion.slice(0, 5).map((tool, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="font-bold text-white capitalize truncate max-w-[100px]">{tool.tool_name}</span>
+                      <span className="text-[#00ff88] font-black">{tool.conversion_rate.toFixed(0)}%</span>
+                    </div>
+                    <div className="flex gap-2 text-[8px] text-gray-500">
+                      <span>{tool.opens} opens</span>
+                      <span>•</span>
+                      <span className="text-[#00ff88]">{tool.successes} ✓</span>
+                      {tool.errors > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-400">{tool.errors} ✗</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* AI Feature Adoption */}
+          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#ff6b9d]/10 flex items-center justify-center">
+                <Cpu className="text-[#ff6b9d]" size={20} />
+              </div>
+              <div>
+                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">AI Features</h3>
+                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Adoption</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {aiFeatures.length === 0 ? (
+                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No AI usage yet</p>
+              ) : (
+                aiFeatures.slice(0, 8).map((feature, idx) => (
+                  <div key={idx} className="flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-white capitalize">{feature.feature_name}</span>
+                      <span className="text-[8px] text-gray-600 capitalize">{feature.tool}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-[#ff6b9d] font-bold">{feature.usage_count}</span>
+                      <span className="text-[8px] text-gray-500">{feature.unique_users}u</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
 

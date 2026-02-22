@@ -116,6 +116,27 @@ interface ScreenNavigationStats {
   unique_users: number;
 }
 
+interface ErrorStats {
+  tool: string;
+  error_count: number;
+  error_messages: Record<string, number>;
+  unique_users: number;
+}
+
+interface TimeSeriesData {
+  date: string;
+  events: number;
+  devices: number;
+}
+
+interface ToolPerformanceStats {
+  tool: string;
+  total_uses: number;
+  success_rate: number;
+  avg_file_size_mb: number;
+  unique_users: number;
+}
+
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -134,6 +155,9 @@ const App: React.FC = () => {
   const [aiFeatures, setAIFeatures] = useState<AIFeatureStats[]>([]);
   const [screenNavigation, setScreenNavigation] = useState<ScreenNavigationStats[]>([]);
   const [recentEvents, setRecentEvents] = useState<AnalyticsEvent[]>([]);
+  const [errorStats, setErrorStats] = useState<ErrorStats[]>([]);
+  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData[]>([]);
+  const [toolPerformance, setToolPerformance] = useState<ToolPerformanceStats[]>([]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -343,6 +367,101 @@ const App: React.FC = () => {
 
     // Set recent events for live feed
     setRecentEvents(events.slice(0, 50));
+
+    // Process Error Statistics
+    const errorMap: Record<string, { count: number; messages: Record<string, number>; users: Set<string> }> = {};
+
+    events.filter(e => e.event === 'tool_error').forEach(e => {
+      const tool = e.data?.tool || 'Unknown';
+      const errorMsg = e.data?.error || 'Unknown error';
+
+      if (!errorMap[tool]) {
+        errorMap[tool] = { count: 0, messages: {}, users: new Set() };
+      }
+
+      errorMap[tool].count++;
+      errorMap[tool].messages[errorMsg] = (errorMap[tool].messages[errorMsg] || 0) + 1;
+      errorMap[tool].users.add(e.device_id);
+    });
+
+    const errors: ErrorStats[] = Object.entries(errorMap)
+      .map(([tool, stats]) => ({
+        tool,
+        error_count: stats.count,
+        error_messages: stats.messages,
+        unique_users: stats.users.size
+      }))
+      .sort((a, b) => b.error_count - a.error_count);
+
+    setErrorStats(errors);
+
+    // Process Time Series Data (last 7 days)
+    const timeSeriesMap: Record<string, { events: number; devices: Set<string> }> = {};
+
+    events.forEach(e => {
+      const date = e.created_at.split('T')[0];
+      if (!timeSeriesMap[date]) {
+        timeSeriesMap[date] = { events: 0, devices: new Set() };
+      }
+      timeSeriesMap[date].events++;
+      timeSeriesMap[date].devices.add(e.device_id);
+    });
+
+    const timeSeries: TimeSeriesData[] = Object.entries(timeSeriesMap)
+      .map(([date, stats]) => ({
+        date,
+        events: stats.events,
+        devices: stats.devices.size
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    setTimeSeriesData(timeSeries);
+
+    // Process Tool Performance Stats (combines opens, successes, errors, file sizes)
+    const performanceMap: Record<string, {
+      opens: number;
+      successes: number;
+      total_size: number;
+      file_count: number;
+      users: Set<string>;
+    }> = {};
+
+    events.filter(e => e.event === 'tool_open').forEach(e => {
+      const tool = e.data?.tool || 'Unknown';
+      if (!performanceMap[tool]) {
+        performanceMap[tool] = { opens: 0, successes: 0, total_size: 0, file_count: 0, users: new Set() };
+      }
+      performanceMap[tool].opens++;
+      performanceMap[tool].users.add(e.device_id);
+    });
+
+    events.filter(e => e.event === 'tool_success').forEach(e => {
+      const tool = e.data?.tool || 'Unknown';
+      if (!performanceMap[tool]) {
+        performanceMap[tool] = { opens: 0, successes: 0, total_size: 0, file_count: 0, users: new Set() };
+      }
+      performanceMap[tool].successes++;
+      performanceMap[tool].users.add(e.device_id);
+
+      // Track file sizes
+      const finalSizeMb = parseFloat(e.data?.final_size_mb || '0');
+      if (finalSizeMb > 0) {
+        performanceMap[tool].total_size += finalSizeMb;
+        performanceMap[tool].file_count++;
+      }
+    });
+
+    const performance: ToolPerformanceStats[] = Object.entries(performanceMap)
+      .map(([tool, stats]) => ({
+        tool,
+        total_uses: stats.successes,
+        success_rate: stats.opens > 0 ? (stats.successes / stats.opens) * 100 : 0,
+        avg_file_size_mb: stats.file_count > 0 ? stats.total_size / stats.file_count : 0,
+        unique_users: stats.users.size
+      }))
+      .sort((a, b) => b.total_uses - a.total_uses);
+
+    setToolPerformance(performance);
   };
 
   const openUserDetail = async (user: UserAccount) => {
@@ -823,7 +942,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Pricing Funnel Panel */}
+          {/* Pricing Funnel Panel with Visualization */}
           <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-yellow-500/10 flex items-center justify-center">
@@ -831,25 +950,66 @@ const App: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Pricing Funnel</h3>
-                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Conversion</p>
+                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Monetization</p>
               </div>
             </div>
 
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-500">Saw Pricing</span>
-                <span className="text-lg font-black text-white">{pricingViews}</span>
+              {/* Visual Funnel */}
+              <div className="space-y-2">
+                {/* Stage 1: Saw Pricing */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Pricing Views</span>
+                    <span className="font-black text-white">{pricingViews}</span>
+                  </div>
+                  <div className="h-6 bg-gradient-to-r from-gray-500/30 to-gray-500/20 rounded-lg flex items-center justify-center">
+                    <div className="w-full h-1 bg-gradient-to-r from-gray-500 to-gray-400 rounded-full mx-2" />
+                  </div>
+                </div>
+
+                {/* Arrow */}
+                <div className="flex justify-center">
+                  <ChevronRight className="text-gray-600 rotate-90" size={12} />
+                </div>
+
+                {/* Stage 2: Unique Clicks */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Unique Clicks</span>
+                    <span className="font-black text-[#00ffcc]">{pricingClicks}</span>
+                  </div>
+                  <div
+                    className="h-6 bg-gradient-to-r from-[#00ffcc]/30 to-[#00ffcc]/20 rounded-lg flex items-center justify-center"
+                    style={{ width: pricingViews > 0 ? `${(pricingClicks / pricingViews) * 100}%` : '0%' }}
+                  >
+                    <div className="w-full h-1 bg-gradient-to-r from-[#00ffcc] to-[#00ff88] rounded-full mx-2" />
+                  </div>
+                </div>
+
+                {/* Arrow */}
+                <div className="flex justify-center">
+                  <ChevronRight className="text-gray-600 rotate-90" size={12} />
+                </div>
+
+                {/* Stage 3: Purchased */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-gray-400">Purchased</span>
+                    <span className="font-black text-yellow-500">{successfulTxns.length}</span>
+                  </div>
+                  <div
+                    className="h-6 bg-gradient-to-r from-yellow-500/30 to-yellow-500/20 rounded-lg flex items-center justify-center"
+                    style={{ width: pricingClicks > 0 ? `${(successfulTxns.length / pricingClicks) * 100}%` : '0%' }}
+                  >
+                    <div className="w-full h-1 bg-gradient-to-r from-yellow-500 to-yellow-400 rounded-full mx-2" />
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-500">Unique Clicks</span>
-                <span className="text-lg font-black text-[#00ffcc]">{pricingClicks}</span>
-              </div>
-              <div className="flex justify-between items-center pt-3 border-t border-white/5">
-                <span className="text-[10px] text-gray-500">Purchased</span>
-                <span className="text-lg font-black text-yellow-500">{successfulTxns.length}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold text-white">Conv. Rate</span>
+
+              {/* Conversion Rate */}
+              <div className="pt-3 border-t border-white/5 flex justify-between items-center">
+                <span className="text-[10px] font-bold text-white">Final Conv. Rate</span>
                 <span className="text-2xl font-black text-[#00ff88]">{pricingConversionRate}%</span>
               </div>
             </div>
@@ -912,7 +1072,7 @@ const App: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-          {/* Screen Navigation Panel */}
+          {/* Screen Navigation Panel with Pie Chart */}
           <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -926,24 +1086,85 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              {screenNavigation.length === 0 ? (
-                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
-              ) : (
-                screenNavigation.slice(0, 8).map((screen, idx) => (
-                  <div key={idx} className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-white capitalize truncate max-w-[100px]">{screen.screen}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] text-gray-500">{screen.views} views</span>
-                      <span className="text-[8px] text-[#a78bfa] font-bold">{screen.unique_users}u</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {screenNavigation.length === 0 ? (
+              <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
+            ) : (
+              <div className="space-y-4">
+                {/* Pie Chart Visualization */}
+                <div className="flex items-center justify-center">
+                  {(() => {
+                    const totalViews = screenNavigation.reduce((sum, s) => sum + s.views, 0);
+                    const colors = ['#a78bfa', '#00ffcc', '#ff6b9d', '#ffd700', '#00ff88', '#ff8fab', '#8b5cf6', '#06b6d4'];
+                    let currentAngle = -90; // Start from top
+
+                    return (
+                      <svg width="140" height="140" viewBox="0 0 140 140" className="transform -rotate-0">
+                        <circle cx="70" cy="70" r="70" fill="rgba(0,0,0,0.2)" />
+                        {screenNavigation.slice(0, 8).map((screen, idx) => {
+                          const percentage = (screen.views / totalViews) * 100;
+                          const angle = (percentage / 100) * 360;
+                          const largeArc = angle > 180 ? 1 : 0;
+
+                          const startAngle = currentAngle * (Math.PI / 180);
+                          const endAngle = (currentAngle + angle) * (Math.PI / 180);
+
+                          const x1 = 70 + 70 * Math.cos(startAngle);
+                          const y1 = 70 + 70 * Math.sin(startAngle);
+                          const x2 = 70 + 70 * Math.cos(endAngle);
+                          const y2 = 70 + 70 * Math.sin(endAngle);
+
+                          const path = `M 70 70 L ${x1} ${y1} A 70 70 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                          currentAngle += angle;
+
+                          return (
+                            <path
+                              key={idx}
+                              d={path}
+                              fill={colors[idx % colors.length]}
+                              opacity="0.8"
+                              className="hover:opacity-100 transition-opacity"
+                            />
+                          );
+                        })}
+                        {/* Center circle */}
+                        <circle cx="70" cy="70" r="25" fill="rgba(5,5,5,0.95)" />
+                        <text x="70" y="68" textAnchor="middle" className="text-[10px] font-black fill-white">
+                          {totalViews}
+                        </text>
+                        <text x="70" y="78" textAnchor="middle" className="text-[6px] font-bold fill-gray-500">
+                          VIEWS
+                        </text>
+                      </svg>
+                    );
+                  })()}
+                </div>
+
+                {/* Legend */}
+                <div className="space-y-1">
+                  {screenNavigation.slice(0, 6).map((screen, idx) => {
+                    const colors = ['#a78bfa', '#00ffcc', '#ff6b9d', '#ffd700', '#00ff88', '#ff8fab'];
+                    const totalViews = screenNavigation.reduce((sum, s) => sum + s.views, 0);
+                    const percentage = ((screen.views / totalViews) * 100).toFixed(0);
+
+                    return (
+                      <div key={idx} className="flex justify-between items-center text-[9px]">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-2 h-2 rounded-sm"
+                            style={{ backgroundColor: colors[idx % colors.length] }}
+                          />
+                          <span className="text-white capitalize truncate max-w-[80px]">{screen.screen}</span>
+                        </div>
+                        <span className="text-gray-500 font-bold">{percentage}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Tool Conversion Funnel */}
+          {/* Tool Conversion Funnel with Visual Bars */}
           <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[#00ff88]/10 flex items-center justify-center">
@@ -960,20 +1181,41 @@ const App: React.FC = () => {
                 <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
               ) : (
                 toolConversion.slice(0, 5).map((tool, idx) => (
-                  <div key={idx} className="space-y-1">
+                  <div key={idx} className="space-y-2">
                     <div className="flex justify-between text-[10px]">
                       <span className="font-bold text-white capitalize truncate max-w-[100px]">{tool.tool_name}</span>
                       <span className="text-[#00ff88] font-black">{tool.conversion_rate.toFixed(0)}%</span>
                     </div>
-                    <div className="flex gap-2 text-[8px] text-gray-500">
-                      <span>{tool.opens} opens</span>
-                      <span>•</span>
-                      <span className="text-[#00ff88]">{tool.successes} ✓</span>
+
+                    {/* Funnel Visualization */}
+                    <div className="space-y-1">
+                      {/* Opens bar (full width) */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-5 bg-gradient-to-r from-blue-500/30 to-blue-500/20 rounded-lg flex items-center px-2">
+                          <span className="text-[8px] font-bold text-blue-300">{tool.opens} opens</span>
+                        </div>
+                      </div>
+
+                      {/* Successes bar (proportional) */}
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-5 bg-gradient-to-r from-[#00ff88] to-[#00ffcc] rounded-lg flex items-center px-2 transition-all"
+                          style={{ width: `${tool.conversion_rate}%` }}
+                        >
+                          <span className="text-[8px] font-bold text-white whitespace-nowrap">{tool.successes} ✓</span>
+                        </div>
+                      </div>
+
+                      {/* Errors bar (if any) */}
                       {tool.errors > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-red-400">{tool.errors} ✗</span>
-                        </>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-4 bg-gradient-to-r from-red-500 to-red-400 rounded-lg flex items-center px-2"
+                            style={{ width: `${(tool.errors / tool.opens) * 100}%` }}
+                          >
+                            <span className="text-[8px] font-bold text-white">{tool.errors} ✗</span>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1014,6 +1256,221 @@ const App: React.FC = () => {
             </div>
           </div>
 
+        </div>
+      </div>
+
+      {/* NEW: ERROR DASHBOARD, TIME CHART, TOOL PERFORMANCE */}
+      <div className="mb-10">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-0.5 h-3 bg-red-500 rounded-full" />
+          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">ADVANCED ANALYTICS</p>
+          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Deep Insights</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+
+          {/* Error Dashboard */}
+          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center">
+                <AlertTriangle className="text-red-500" size={20} />
+              </div>
+              <div>
+                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Error Tracking</h3>
+                <p className="text-[8px] text-gray-600 uppercase tracking-wider">
+                  {errorStats.reduce((sum, e) => sum + e.error_count, 0)} Total Errors
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {errorStats.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-[10px] text-[#00ffcc] uppercase font-black tracking-widest">No Errors ✓</p>
+                </div>
+              ) : (
+                errorStats.slice(0, 5).map((error, idx) => {
+                  const maxErrors = errorStats[0]?.error_count || 1;
+                  const percentage = (error.error_count / maxErrors) * 100;
+                  const topError = Object.entries(error.error_messages)
+                    .sort((a, b) => b[1] - a[1])[0];
+
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="font-bold text-red-400 capitalize truncate max-w-[100px]">{error.tool}</span>
+                        <span className="text-gray-500">{error.error_count}×</span>
+                      </div>
+                      <div className="h-1.5 bg-black/30 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${percentage}%` }}
+                          transition={{ duration: 0.5, delay: idx * 0.1 }}
+                          className="h-full bg-gradient-to-r from-red-500 to-red-400"
+                        />
+                      </div>
+                      <p className="text-[8px] text-gray-600 truncate">
+                        {topError ? topError[0] : 'Unknown error'}
+                      </p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Time-Based Activity Chart */}
+          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                <BarChart2 className="text-blue-500" size={20} />
+              </div>
+              <div>
+                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Activity Trend</h3>
+                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Last 7 Days</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {timeSeriesData.length === 0 ? (
+                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
+              ) : (
+                <div className="flex items-end justify-between gap-1 h-32">
+                  {timeSeriesData.slice(-7).map((day, idx) => {
+                    const maxEvents = Math.max(...timeSeriesData.map(d => d.events));
+                    const heightPercent = (day.events / maxEvents) * 100;
+                    const dateStr = format(new Date(day.date), 'EEE');
+
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${heightPercent}%` }}
+                          transition={{ duration: 0.5, delay: idx * 0.1 }}
+                          className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg min-h-[4px] relative group"
+                          title={`${day.events} events, ${day.devices} devices`}
+                        >
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-[8px] font-black text-blue-400">{day.events}</span>
+                          </div>
+                        </motion.div>
+                        <span className="text-[8px] text-gray-500 font-bold">{dateStr}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {timeSeriesData.length > 0 && (
+              <div className="pt-3 border-t border-white/5 flex justify-between text-[10px]">
+                <span className="text-gray-500">Avg/Day:</span>
+                <span className="font-black text-blue-400">
+                  {Math.round(timeSeriesData.reduce((sum, d) => sum + d.events, 0) / timeSeriesData.length)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Tool Performance Leaderboard */}
+          <div className="nexus-glass rounded-[2rem] p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-yellow-500/10 flex items-center justify-center">
+                <Trophy className="text-yellow-500" size={20} />
+              </div>
+              <div>
+                <h3 className="font-black uppercase text-[9px] tracking-widest text-gray-400">Top Tools</h3>
+                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Performance</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {toolPerformance.length === 0 ? (
+                <p className="text-[10px] text-gray-500 text-center py-6 uppercase tracking-widest">No data yet</p>
+              ) : (
+                toolPerformance.slice(0, 5).map((tool, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px]">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-black w-4 text-center ${
+                          idx === 0 ? 'text-yellow-500' :
+                          idx === 1 ? 'text-gray-300' :
+                          idx === 2 ? 'text-[#cd7f32]' :
+                          'text-gray-600'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-white capitalize truncate max-w-[80px]">{tool.tool}</span>
+                      </div>
+                      <span className="text-[#00ff88] font-black">{tool.total_uses}</span>
+                    </div>
+                    <div className="flex gap-2 text-[8px] text-gray-500 pl-6">
+                      <span>{tool.success_rate.toFixed(0)}% success</span>
+                      {tool.avg_file_size_mb > 0 && (
+                        <>
+                          <span>•</span>
+                          <span>{tool.avg_file_size_mb.toFixed(1)}MB avg</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="h-1 bg-black/30 rounded-full overflow-hidden ml-6">
+                      <div
+                        className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400 rounded-full"
+                        style={{ width: `${tool.success_rate}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Retention Metrics Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {(() => {
+            // Calculate DAD, WAD, MAD from analytics
+            const now = new Date();
+            const oneDayAgo = subDays(now, 1);
+            const sevenDaysAgo = subDays(now, 7);
+            const thirtyDaysAgo = subDays(now, 30);
+
+            const dad = new Set(
+              analytics
+                .filter(e => isAfter(new Date(e.created_at), oneDayAgo))
+                .map(e => e.device_id)
+            ).size;
+
+            const wad = new Set(
+              analytics
+                .filter(e => isAfter(new Date(e.created_at), sevenDaysAgo))
+                .map(e => e.device_id)
+            ).size;
+
+            const mad = new Set(
+              analytics
+                .filter(e => isAfter(new Date(e.created_at), thirtyDaysAgo))
+                .map(e => e.device_id)
+            ).size;
+
+            // Engagement rate: DAD/WAD
+            const engagementRate = wad > 0 ? ((dad / wad) * 100).toFixed(0) : '0';
+
+            return [
+              { label: 'DAD', value: dad, icon: Activity, color: '#00ffcc', note: 'Daily Active' },
+              { label: 'WAD', value: wad, icon: TrendingUp, color: '#a78bfa', note: 'Weekly Active' },
+              { label: 'MAD', value: mad, icon: Users, color: '#ff6b9d', note: 'Monthly Active' },
+              { label: 'Engagement', value: `${engagementRate}%`, icon: Zap, color: '#ffd700', note: 'DAD/WAD Ratio' },
+            ].map((stat, i) => (
+              <div key={i} className="p-5 rounded-3xl nexus-glass space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[9px] font-black tracking-widest text-gray-500 uppercase">{stat.label}</span>
+                  <stat.icon size={13} style={{ color: stat.color, opacity: 0.4 }} />
+                </div>
+                <div className="text-2xl font-black tracking-tighter" style={{ color: stat.color }}>{stat.value}</div>
+                <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">{stat.note}</p>
+              </div>
+            ));
+          })()}
         </div>
       </div>
 

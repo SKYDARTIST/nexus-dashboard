@@ -239,12 +239,12 @@ const App: React.FC = () => {
   };
 
   const processAnalyticsData = (events: AnalyticsEvent[]) => {
-    // Process Tool Usage
-    const toolEvents = events.filter(e => e.event === 'tool_open');
+    // Process Tool Usage (look for screen_view events instead of tool_open)
+    const toolEvents = events.filter(e => e.event === 'screen_view');
     const toolMap: Record<string, { opens: number; users: Set<string> }> = {};
 
     toolEvents.forEach(e => {
-      const toolName = e.data?.tool || 'Unknown';
+      const toolName = e.data?.screen || 'Unknown';
       if (!toolMap[toolName]) {
         toolMap[toolName] = { opens: 0, users: new Set() };
       }
@@ -289,20 +289,20 @@ const App: React.FC = () => {
     // Process Tool Conversion Rates (opens → successes)
     const conversionMap: Record<string, { opens: number; successes: number; errors: number }> = {};
 
-    events.filter(e => e.event === 'tool_open').forEach(e => {
-      const tool = e.data?.tool || 'Unknown';
+    events.filter(e => e.event === 'screen_view').forEach(e => {
+      const tool = e.data?.screen || 'Unknown';
       if (!conversionMap[tool]) conversionMap[tool] = { opens: 0, successes: 0, errors: 0 };
       conversionMap[tool].opens++;
     });
 
     events.filter(e => e.event === 'tool_success').forEach(e => {
-      const tool = e.data?.tool || 'Unknown';
+      const tool = e.data?.screen || 'Unknown';
       if (!conversionMap[tool]) conversionMap[tool] = { opens: 0, successes: 0, errors: 0 };
       conversionMap[tool].successes++;
     });
 
     events.filter(e => e.event === 'tool_error').forEach(e => {
-      const tool = e.data?.tool || 'Unknown';
+      const tool = e.data?.screen || 'Unknown';
       if (!conversionMap[tool]) conversionMap[tool] = { opens: 0, successes: 0, errors: 0 };
       conversionMap[tool].errors++;
     });
@@ -372,7 +372,7 @@ const App: React.FC = () => {
     const errorMap: Record<string, { count: number; messages: Record<string, number>; users: Set<string> }> = {};
 
     events.filter(e => e.event === 'tool_error').forEach(e => {
-      const tool = e.data?.tool || 'Unknown';
+      const tool = e.data?.screen || 'Unknown';
       const errorMsg = e.data?.error || 'Unknown error';
 
       if (!errorMap[tool]) {
@@ -426,8 +426,8 @@ const App: React.FC = () => {
       users: Set<string>;
     }> = {};
 
-    events.filter(e => e.event === 'tool_open').forEach(e => {
-      const tool = e.data?.tool || 'Unknown';
+    events.filter(e => e.event === 'screen_view').forEach(e => {
+      const tool = e.data?.screen || 'Unknown';
       if (!performanceMap[tool]) {
         performanceMap[tool] = { opens: 0, successes: 0, total_size: 0, file_count: 0, users: new Set() };
       }
@@ -436,7 +436,7 @@ const App: React.FC = () => {
     });
 
     events.filter(e => e.event === 'tool_success').forEach(e => {
-      const tool = e.data?.tool || 'Unknown';
+      const tool = e.data?.screen || 'Unknown';
       if (!performanceMap[tool]) {
         performanceMap[tool] = { opens: 0, successes: 0, total_size: 0, file_count: 0, users: new Set() };
       }

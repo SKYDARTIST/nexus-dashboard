@@ -565,7 +565,7 @@ const App: React.FC = () => {
           </div>
           <button
             onClick={handleLogin}
-            className="w-full py-5 rounded-2xl bg-[#00ffcc] text-black font-black uppercase text-sm tracking-[0.2em] hover:scale-[1.02] transition-transform flex items-center justify-center gap-3"
+            className="w-full py-5 rounded-2xl bg-[#00ffcc] text-black font-black uppercase text-sm tracking-[0.2em] hover:brightness-110 active:brightness-95 transition-all duration-200 cursor-pointer flex items-center justify-center gap-3"
           >
             Authenticate via Google
           </button>
@@ -581,7 +581,7 @@ const App: React.FC = () => {
           <XCircle className="text-red-500 mx-auto" size={48} />
           <h2 className="text-xl font-black uppercase tracking-widest text-red-500">Access Restricted</h2>
           <p className="text-gray-500">Identity failure. You do not have owner clearance.</p>
-          <button onClick={handleLogout} className="text-[#00ffcc] text-xs font-black uppercase tracking-widest underline underline-offset-8">Switch Account</button>
+          <button onClick={handleLogout} className="text-[#00ffcc] text-xs font-black uppercase tracking-widest underline underline-offset-8 cursor-pointer hover:brightness-125 transition-all duration-200">Switch Account</button>
         </div>
       </div>
     );
@@ -679,8 +679,9 @@ const App: React.FC = () => {
       .filter(e => e.event === 'pricing_banner_tap' || e.event === 'pricing_tile_tap')
       .map(e => e.device_id)
   ).size;
+  const recentSuccessfulTxns = successfulTxns.filter(tx => isAfter(new Date(tx.verified_at), sevenDaysAgo));
   const pricingConversionRate = pricingClicks > 0
-    ? ((successfulTxns.length / pricingClicks) * 100).toFixed(1)
+    ? Math.min((recentSuccessfulTxns.length / pricingClicks) * 100, 100).toFixed(1)
     : '0.0';
 
   // Power Users: top 10 by session count
@@ -744,13 +745,15 @@ const App: React.FC = () => {
           <button
             onClick={fetchAllData}
             title="Refresh data"
-            className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-[#00ffcc] transition-all"
+            aria-label="Refresh all data"
+            className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-[#00ffcc] transition-all duration-200 cursor-pointer"
           >
             <RefreshCw size={20} />
           </button>
           <button
             onClick={handleLogout}
-            className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition-all"
+            aria-label="Sign out"
+            className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200 cursor-pointer"
           >
             <LogOut size={20} />
           </button>
@@ -777,9 +780,9 @@ const App: React.FC = () => {
       {/* Stats Row 1: User Engagement */}
       <div className="mb-4">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-[#00ffcc] rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">USER ENGAGEMENT</p>
-          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">signed-in only</span>
+          <div className="w-1 h-4 bg-[#00ffcc] rounded-full" />
+          <p className="text-[11px] font-black tracking-[0.3em] text-gray-400 uppercase">USER ENGAGEMENT</p>
+          <span className="text-[9px] font-bold px-2.5 py-1 rounded-full bg-white/5 text-gray-500 uppercase tracking-widest">signed-in only</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[
@@ -790,7 +793,7 @@ const App: React.FC = () => {
             { label: 'Active (1h)', value: activeHour, icon: Clock, color: activeHour > 0 ? '#00ffcc' : 'white', note: null },
             { label: 'Active (24h)', value: active24h, icon: Users, color: active24h > 0 ? '#00ffcc' : 'white', note: null },
           ].map((stat, i) => (
-            <div key={i} className="p-5 rounded-3xl nexus-glass space-y-3">
+            <div key={i} className={`p-5 rounded-3xl nexus-glass space-y-3 ${i === 0 ? 'nexus-card-highlight' : ''}`}>
               <div className="flex justify-between items-center">
                 <span className="text-[9px] font-black tracking-widest text-gray-500 uppercase">{stat.label}</span>
                 <stat.icon size={13} className="text-[#00ffcc]/40" />
@@ -805,8 +808,8 @@ const App: React.FC = () => {
       {/* Stats Row 2: Revenue + Retention */}
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-[#ffd700] rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">REVENUE & RETENTION</p>
+          <div className="w-1 h-4 bg-[#ffd700] rounded-full" />
+          <p className="text-[11px] font-black tracking-[0.3em] text-gray-400 uppercase">REVENUE & RETENTION</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
           {[
@@ -820,11 +823,7 @@ const App: React.FC = () => {
           ].map((stat, i) => (
             <div
               key={i}
-              className={`p-5 rounded-3xl nexus-glass space-y-3 ${
-                i === 0
-                  ? 'border border-[#ffd700]/25 shadow-[0_0_24px_rgba(255,215,0,0.07)]'
-                  : ''
-              }`}
+              className={`p-5 rounded-3xl nexus-glass space-y-3 ${i === 0 ? 'nexus-card-gold' : ''}`}
             >
               <div className="flex justify-between items-center">
                 <span className="text-[9px] font-black tracking-widest text-gray-500 uppercase">{stat.label}</span>
@@ -844,9 +843,9 @@ const App: React.FC = () => {
       {/* Analytics Dashboard: Tool Usage, Daily Devices, Pricing Funnel, User Breakdown */}
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-[#00ffcc] rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">ANALYTICS INSIGHTS</p>
-          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Last 7 Days</span>
+          <div className="w-1 h-4 bg-[#00ffcc] rounded-full" />
+          <p className="text-[11px] font-black tracking-[0.3em] text-gray-400 uppercase">ANALYTICS INSIGHTS</p>
+          <span className="text-[9px] font-bold px-2.5 py-1 rounded-full bg-white/5 text-gray-500 uppercase tracking-widest">Last 7 Days</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Tool Usage Panel */}
@@ -1000,7 +999,7 @@ const App: React.FC = () => {
                   </div>
                   <div
                     className="h-6 bg-gradient-to-r from-yellow-500/30 to-yellow-500/20 rounded-lg flex items-center justify-center"
-                    style={{ width: pricingClicks > 0 ? `${(successfulTxns.length / pricingClicks) * 100}%` : '0%' }}
+                    style={{ width: pricingClicks > 0 ? `${Math.min((recentSuccessfulTxns.length / pricingClicks) * 100, 100)}%` : '0%' }}
                   >
                     <div className="w-full h-1 bg-gradient-to-r from-yellow-500 to-yellow-400 rounded-full mx-2" />
                   </div>
@@ -1066,9 +1065,9 @@ const App: React.FC = () => {
       {/* NEW ANALYTICS: Screen Navigation, Tool Conversion, AI Features */}
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-[#a78bfa] rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">USER JOURNEY & CONVERSIONS</p>
-          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Last 7 Days</span>
+          <div className="w-1 h-4 bg-[#a78bfa] rounded-full" />
+          <p className="text-[11px] font-black tracking-[0.3em] text-gray-400 uppercase">USER JOURNEY & CONVERSIONS</p>
+          <span className="text-[9px] font-bold px-2.5 py-1 rounded-full bg-white/5 text-gray-500 uppercase tracking-widest">Last 7 Days</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
@@ -1262,9 +1261,9 @@ const App: React.FC = () => {
       {/* NEW: ERROR DASHBOARD, TIME CHART, TOOL PERFORMANCE */}
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-red-500 rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">ADVANCED ANALYTICS</p>
-          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Deep Insights</span>
+          <div className="w-1 h-4 bg-red-500 rounded-full" />
+          <p className="text-[11px] font-black tracking-[0.3em] text-gray-400 uppercase">ADVANCED ANALYTICS</p>
+          <span className="text-[9px] font-bold px-2.5 py-1 rounded-full bg-white/5 text-gray-500 uppercase tracking-widest">Deep Insights</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
 
@@ -1477,9 +1476,9 @@ const App: React.FC = () => {
       {/* Live Events Feed */}
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-0.5 h-3 bg-[#00ffcc] rounded-full" />
-          <p className="text-[9px] font-black tracking-[0.4em] text-gray-600 uppercase">LIVE ACTIVITY FEED</p>
-          <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-white/5 text-gray-600 uppercase tracking-widest">Real-time</span>
+          <div className="w-1 h-4 bg-[#00ffcc] rounded-full" />
+          <p className="text-[11px] font-black tracking-[0.3em] text-gray-400 uppercase">LIVE ACTIVITY FEED</p>
+          <span className="text-[9px] font-bold px-2.5 py-1 rounded-full bg-white/5 text-gray-500 uppercase tracking-widest">Real-time</span>
         </div>
         <div className="nexus-glass rounded-[2rem] p-6">
           <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -1621,7 +1620,7 @@ const App: React.FC = () => {
                             <button
                               disabled={grantingId === tx.id}
                               onClick={() => handleGrant(tx)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20 rounded-full text-[8px] font-black uppercase tracking-widest hover:bg-[#00ffcc]/20 transition-all disabled:opacity-40"
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20 rounded-full text-[8px] font-black uppercase tracking-widest hover:bg-[#00ffcc]/20 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {grantingId === tx.id
                                 ? <RefreshCw size={9} className="animate-spin" />
@@ -1698,7 +1697,7 @@ const App: React.FC = () => {
         {/* Power Users Leaderboard */}
         <div className="rounded-[2.5rem] nexus-glass overflow-hidden">
           <div className="p-6 border-b border-white/5 flex items-center gap-3">
-            <div className="w-0.5 h-3 bg-[#ffd700] rounded-full" />
+            <div className="w-1 h-4 bg-[#ffd700] rounded-full" />
             <Trophy size={14} className="text-[#ffd700]" />
             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-400">POWER USERS</span>
             <span className="text-[9px] text-gray-600 font-bold ml-auto uppercase tracking-widest">by sessions</span>
@@ -1740,7 +1739,7 @@ const App: React.FC = () => {
         {/* Churn Risk */}
         <div className="rounded-[2.5rem] nexus-glass overflow-hidden">
           <div className="p-6 border-b border-white/5 flex items-center gap-3">
-            <div className="w-0.5 h-3 bg-[#ff6b6b] rounded-full" />
+            <div className="w-1 h-4 bg-[#ff6b6b] rounded-full" />
             <AlertTriangle size={14} className="text-[#ff6b6b]" />
             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-400">CHURN RISK</span>
             <span className="text-[9px] text-gray-600 font-bold ml-auto uppercase tracking-widest">7+ days silent</span>
@@ -1819,7 +1818,7 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setSelectedUserDetail(null)} className="p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0">
+                <button onClick={() => setSelectedUserDetail(null)} aria-label="Close user detail" className="p-2 rounded-xl hover:bg-white/10 transition-colors duration-200 cursor-pointer flex-shrink-0">
                   <X size={18} className="text-gray-400" />
                 </button>
               </div>
